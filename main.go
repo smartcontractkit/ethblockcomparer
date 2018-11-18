@@ -58,8 +58,8 @@ func checkError(err error) {
 
 type heightsController struct {
 	threshold *big.Int
-	client1   *client
-	client2   *client
+	client1   client
+	client2   client
 }
 
 func newHeightsController(endpoint1, endpoint2, thresholdStr string) (*heightsController, error) {
@@ -72,8 +72,8 @@ func newHeightsController(endpoint1, endpoint2, thresholdStr string) (*heightsCo
 	}
 	return &heightsController{
 		threshold: big.NewInt(int64(threshold)),
-		client1:   &client{Client: c1, endpoint: endpoint1},
-		client2:   &client{Client: c2, endpoint: endpoint2},
+		client1:   &clientImpl{Client: c1, endpoint: endpoint1},
+		client2:   &clientImpl{Client: c2, endpoint: endpoint2},
 	}, nil
 }
 
@@ -101,10 +101,10 @@ func (hc *heightsController) Index(c *gin.Context) {
 		"difference": difference.String(),
 		"threshold":  fmt.Sprint(hc.threshold),
 		"endpoints": []interface{}{map[string]interface{}{
-			"url":    hc.client1.endpoint,
+			"url":    hc.client1.Endpoint(),
 			"number": latest1.Number,
 		}, map[string]interface{}{
-			"url":    hc.client2.endpoint,
+			"url":    hc.client2.Endpoint(),
 			"number": latest2.Number,
 		}},
 	}
@@ -128,9 +128,18 @@ func logJSON(v gin.H) {
 	log.Println(string(j))
 }
 
-type client struct {
+type client interface {
+	Call(result interface{}, method string, args ...interface{}) error
+	Endpoint() string
+}
+
+type clientImpl struct {
 	*rpc.Client
 	endpoint string
+}
+
+func (c *clientImpl) Endpoint() string {
+	return c.endpoint
 }
 
 type block struct {
