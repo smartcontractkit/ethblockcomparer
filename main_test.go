@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang/mock/gomock"
+	"github.com/smartcontractkit/ethblockcomparer/internal/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,22 +97,27 @@ func TestNewHeightsController(t *testing.T) {
 func TestHeightsController_Index(t *testing.T) {
 	threshold := big.NewInt(2)
 	tests := []struct {
-		name             string
-		client1, client2 client
-		status           int
+		name               string
+		factory1, factory2 func(*gomock.Controller) *mocks.Mockclient
+		status             int
 	}{
-		{"bad client 1", clientErrorMock{}, clientMock{}, 502},
-		{"bad client 2", clientErrorMock{}, clientMock{}, 502},
-		{"good clients", clientMock{}, clientMock{}, 200},
+		{"bad client 1", errorClient, goodClient, 502},
+		{"bad client 2", goodClient, errorClient, 502},
+		{"good clients", goodClient, goodClient, 200},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			mockClient1 := test.factory1(ctrl)
+			mockClient2 := test.factory2(ctrl)
+
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			hc := heightsController{
 				threshold: threshold,
-				client1:   test.client1,
-				client2:   test.client2,
+				client1:   mockClient1,
+				client2:   mockClient2,
 			}
 
 			hc.Index(c)
@@ -138,20 +145,17 @@ func TestStatusCodeForDifference(t *testing.T) {
 	}
 }
 
-type clientMock struct{}
-
-func (clientMock) Call(result interface{}, method string, args ...interface{}) error { return nil }
-func (clientMock) Endpoint() string {
-	return "http://clientmock.com"
+func goodClient(ctrl *gomock.Controller) *mocks.Mockclient {
+	mc := mocks.NewMockclient(ctrl)
+	mc.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any())
+	mc.EXPECT().Endpoint().AnyTimes()
+	return mc
 }
 
-type clientErrorMock struct{}
-
-func (clientErrorMock) Call(result interface{}, method string, args ...interface{}) error {
-	return errors.New("clientErrorMock")
-}
-func (clientErrorMock) Endpoint() string {
-	return "http://clienterrormock.com"
+func errorClient(ctrl *gomock.Controller) *mocks.Mockclient {
+	mc := mocks.NewMockclient(ctrl)
+	mc.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("errorClient"))
+	return mc
 }
 
 func newFakeEthNode(blockHeight string) (*httptest.Server, func()) {
