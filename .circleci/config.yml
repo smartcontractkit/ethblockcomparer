@@ -1,0 +1,19 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/golang:1.11
+    working_directory: /go/src/github.com/smartcontractkit/ethblockcomparer
+    steps:
+      - checkout
+      - run: go get github.com/golang/dep/cmd/dep
+      - restore_cache:
+          name: Restore Go Vendor Cache
+          key: v1-go-vendor-{{ checksum "Gopkg.lock" }}
+      - run: dep ensure -vendor-only
+      - save_cache:
+          name: Save Go Vendor Cache
+          key: v1-go-vendor-{{ checksum "Gopkg.lock" }}
+          paths:
+            - ./vendor
+      - run: go test -v ./...
