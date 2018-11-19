@@ -18,13 +18,13 @@ import (
 )
 
 func TestCreateRouter_Integration(t *testing.T) {
-	threshold := big.NewInt(2)
+	threshold := uint(2)
 	fakeEth1, cleanup1 := newFakeEthNode("0x1")
 	defer cleanup1()
 	fakeEth2, cleanup2 := newFakeEthNode("0x2")
 	defer cleanup2()
 
-	r, err := createRouter(fakeEth1.URL, fakeEth2.URL, threshold.String())
+	r, err := createRouter(fakeEth1.URL, fakeEth2.URL, threshold)
 	require.NoError(t, err)
 	server := httptest.NewServer(r)
 	defer server.Close()
@@ -46,10 +46,11 @@ func TestCreateRouter_Integration(t *testing.T) {
 
 func TestCreateRouter_Error(t *testing.T) {
 	tests := []struct {
-		name                            string
-		endpoint1, endpoint2, threshold string
+		name                 string
+		endpoint1, endpoint2 string
+		threshold            uint
 	}{
-		{"bad input", "12gibberish", "http://10.180.0.2:8545", "2"},
+		{"bad input", "12gibberish", "http://10.180.0.2:8545", 2},
 		// More specific edge cases are covered in TestNewHeightsController
 	}
 
@@ -63,19 +64,17 @@ func TestCreateRouter_Error(t *testing.T) {
 
 func TestNewHeightsController(t *testing.T) {
 	tests := []struct {
-		name                            string
-		endpoint1, endpoint2, threshold string
-		wantError                       bool
+		name                 string
+		endpoint1, endpoint2 string
+		threshold            uint
+		wantError            bool
 	}{
-		{"empty endpoint1", "", "http://10.180.0.2:8545", "2", true},
-		{"empty endpoint2", "http://10.180.0.2:8545", "", "2", true},
-		{"bad endpoint1", "12gibberish", "http://10.180.0.2:8545", "2", true},
-		{"bad endpoint2", "http://10.180.0.2:8545", "12gibberish", "2", true},
-		{"negative threshold", "http://10.180.0.2", "http://10.180.0.2:8545", "-2", true},
-		{"bad threshold", "http://10.180.0.2", "http://10.180.0.2:8545", "ninja", true},
-		{"empty threshold", "http://10.180.0.2", "http://10.180.0.2:8545", "", true},
-		{"good input", "http://10.180.0.2", "http://172.16.0.2:8545", "2", false},
-		{"localhost", "localhost:1234", "http://10.180.0.2:8545", "2", false},
+		{"empty endpoint1", "", "http://10.180.0.2:8545", 2, true},
+		{"empty endpoint2", "http://10.180.0.2:8545", "", 2, true},
+		{"bad endpoint1", "12gibberish", "http://10.180.0.2:8545", 2, true},
+		{"bad endpoint2", "http://10.180.0.2:8545", "12gibberish", 2, true},
+		{"good input", "http://10.180.0.2", "http://172.16.0.2:8545", 2, false},
+		{"localhost", "localhost:1234", "http://10.180.0.2:8545", 2, false},
 	}
 
 	for _, test := range tests {
@@ -87,15 +86,14 @@ func TestNewHeightsController(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, test.endpoint1, hc.client1.Endpoint())
 				assert.Equal(t, test.endpoint2, hc.client2.Endpoint())
-				expectation, _ := big.NewInt(0).SetString(test.threshold, 10)
-				assert.Equal(t, expectation, hc.threshold)
+				assert.Equal(t, uint(2), hc.threshold)
 			}
 		})
 	}
 }
 
 func TestHeightsController_Index(t *testing.T) {
-	threshold := big.NewInt(2)
+	threshold := uint(2)
 	tests := []struct {
 		name               string
 		factory1, factory2 func(*gomock.Controller) *mocks.Mockclient
@@ -128,13 +126,14 @@ func TestHeightsController_Index(t *testing.T) {
 
 func TestStatusCodeForDifference(t *testing.T) {
 	tests := []struct {
-		name                  string
-		threshold, difference *big.Int
-		expectation           int
+		name        string
+		threshold   uint
+		difference  *big.Int
+		expectation int
 	}{
-		{"inside", big.NewInt(2), big.NewInt(1), 200},
-		{"border", big.NewInt(2), big.NewInt(2), 200},
-		{"outside", big.NewInt(2), big.NewInt(3), 500},
+		{"inside", 2, big.NewInt(1), 200},
+		{"border", 2, big.NewInt(2), 200},
+		{"outside", 2, big.NewInt(3), 500},
 	}
 
 	for _, test := range tests {

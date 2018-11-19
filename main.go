@@ -3,44 +3,66 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/gin-gonic/gin"
+	"github.com/urfave/cli"
 	"go.uber.org/multierr"
 )
 
 func main() {
-	if len(os.Args) != 4 {
-		log.Panic("Must pass two Ethereum JSON-RPC Endpoints as arguments to compare block heights, and a threshold that defines a healthy height difference (e.g. 20).")
+	app := cli.NewApp()
+	app.Usage = "CLI for EthBlockComparer: ethblockcomparer <ethereum rpc address 1> <ethereum rpc address 2>"
+	app.Version = "1.0.1"
+	app.Action = run
+	app.Flags = []cli.Flag{
+		cli.UintFlag{
+			Name:  "threshold, t",
+			Usage: "Difference in the block height before returning error",
+			Value: 20,
+		},
+		cli.BoolFlag{
+			Name:  "insecure",
+			Usage: "If set, skips verification of the server's certificate chain and host name (useful for self-signed certs)",
+		},
 	}
-	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: insecureSkipVerify()}
-	r, err := createRouter(os.Args[1], os.Args[2], os.Args[3])
-	checkError(err)
-	log.Print("Comparing block heights from ", os.Args[1], " and ", os.Args[2], ", erroring when difference is greater than ", os.Args[3])
-	checkError(r.Run())
+
+	if err := app.Run(os.Args); err != nil {
+		log.Panic(err)
+	}
 }
 
-func insecureSkipVerify() bool {
-	flag, ok := os.LookupEnv("INSECURE_SKIP_VERIFY")
-	if ok {
-		b, err := strconv.ParseBool(flag)
-		if err != nil {
-			log.Print("Error:", err.Error())
-		}
-		return b
+func run(c *cli.Context) error {
+	if c.Bool("insecure") {
+		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	return false
+	if c.NArg() != 2 {
+		return errors.New("must pass the correct number of command line arguments, see `help` for more info")
+	}
+	endpoint1 := c.Args().Get(0)
+	endpoint2 := c.Args().Get(1)
+	threshold := c.Uint("threshold")
+	r, err := createRouter(endpoint1, endpoint2, threshold)
+	if err != nil {
+		return err
+	}
+
+	log.Print("Comparing block heights from ", endpoint1, " and ", endpoint2, ", erroring when difference is greater than ", threshold)
+	if err := r.Run(); err != nil {
+		return err
+	}
+	return nil
 }
 
-func createRouter(p1, p2, threshold string) (*gin.Engine, error) {
+func createRouter(p1, p2 string, threshold uint) (*gin.Engine, error) {
 	r := gin.Default()
 	hc, err := newHeightsController(p1, p2, threshold)
 	if err != nil {
@@ -50,28 +72,21 @@ func createRouter(p1, p2, threshold string) (*gin.Engine, error) {
 	return r, err
 }
 
-func checkError(err error) {
-	if err != nil {
-		log.Panic(err)
-	}
-}
-
 type heightsController struct {
-	threshold *big.Int
+	threshold uint
 	client1   client
 	client2   client
 }
 
-func newHeightsController(endpoint1, endpoint2, thresholdStr string) (*heightsController, error) {
-	threshold, errd := strconv.ParseUint(thresholdStr, 10, 32)
+func newHeightsController(endpoint1, endpoint2 string, threshold uint) (*heightsController, error) {
 	c1, err1 := rpc.Dial(normalizeLocalhost(endpoint1))
 	c2, err2 := rpc.Dial(normalizeLocalhost(endpoint2))
-	merr := multierr.Combine(errd, err1, err2)
+	merr := multierr.Combine(err1, err2)
 	if merr != nil {
 		return nil, merr
 	}
 	return &heightsController{
-		threshold: big.NewInt(int64(threshold)),
+		threshold: threshold,
 		client1:   &clientImpl{Client: c1, endpoint: endpoint1},
 		client2:   &clientImpl{Client: c2, endpoint: endpoint2},
 	}, nil
@@ -112,8 +127,9 @@ func (hc *heightsController) Index(c *gin.Context) {
 	c.JSON(statusCodeForDifference(hc.threshold, difference), resp)
 }
 
-func statusCodeForDifference(threshold, difference *big.Int) int {
-	if threshold.Cmp(difference) == -1 {
+func statusCodeForDifference(threshold uint, difference *big.Int) int {
+	bigThresh := big.NewInt(0).SetUint64(uint64(threshold))
+	if bigThresh.Cmp(difference) == -1 {
 		return 500
 	}
 	return 200
