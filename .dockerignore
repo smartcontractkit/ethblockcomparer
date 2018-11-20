@@ -13,3 +13,10 @@
 
 # dep
 vendor/
+.git/
+.DS_Store
+.envrc
+*.log
+tmp/
+Dockerfile
+ethblockcomparer
