@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/gin-gonic/gin"
 	"github.com/golang/mock/gomock"
 	"github.com/smartcontractkit/ethblockcomparer/internal/mocks"
@@ -124,6 +125,53 @@ func TestHeightsController_Index(t *testing.T) {
 	}
 }
 
+func TestHeightsController_GenerateResponse(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	hc := heightsController{
+		threshold: 2,
+		client1:   goodClient(ctrl),
+		client2:   goodClient(ctrl),
+	}
+
+	block1 := block{Number: hexutil.Big(*big.NewInt(100))}
+	block2 := block{Number: hexutil.Big(*big.NewInt(99))}
+	diff := calculateDifference(block1, block2)
+	actual := hc.generateResponse(block1, block2, diff)
+	expectation := gin.H{
+		"difference": "1",
+		"threshold":  "2",
+		"endpoints": []interface{}{map[string]interface{}{
+			"url":    hc.client1.Endpoint(),
+			"number": block1.Number,
+		}, map[string]interface{}{
+			"url":    hc.client2.Endpoint(),
+			"number": block2.Number,
+		}},
+	}
+
+	require.Equal(t, expectation, actual)
+}
+
+func TestCalculateDifference(t *testing.T) {
+	tests := []struct {
+		name               string
+		n1, n2, difference int64
+	}{
+		{"good", 2, 1, 1},
+		{"good abs", 1, 2, 1},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			block1 := block{Number: hexutil.Big(*big.NewInt(test.n1))}
+			block2 := block{Number: hexutil.Big(*big.NewInt(test.n2))}
+			diff := calculateDifference(block1, block2)
+			require.Equal(t, big.NewInt(test.difference), diff)
+		})
+	}
+}
+
 func TestStatusCodeForDifference(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -146,8 +194,8 @@ func TestStatusCodeForDifference(t *testing.T) {
 
 func goodClient(ctrl *gomock.Controller) *mocks.Mockclient {
 	mc := mocks.NewMockclient(ctrl)
-	mc.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any())
-	mc.EXPECT().Endpoint().AnyTimes()
+	mc.EXPECT().Call(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mc.EXPECT().Endpoint().Return("goodClient.com").AnyTimes()
 	return mc
 }
 

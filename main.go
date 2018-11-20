@@ -105,14 +105,18 @@ func (hc *heightsController) Index(c *gin.Context) {
 	err2 := hc.client2.Call(&latest2, "eth_getBlockByNumber", "latest", false)
 	merr := multierr.Combine(err1, err2)
 	if merr != nil {
-		log.Println("Error:", merr)
-		c.JSON(502, gin.H{"error": merr.Error()})
+		c.AbortWithError(http.StatusBadGateway, merr)
 		return
 	}
 
-	difference := big.NewInt(0)
-	difference.Abs(difference.Sub(latest1.Number.ToInt(), latest2.Number.ToInt()))
-	resp := gin.H{
+	difference := calculateDifference(latest1, latest2)
+	resp := hc.generateResponse(latest1, latest2, difference)
+	logJSON(resp)
+	c.JSON(statusCodeForDifference(hc.threshold, difference), resp)
+}
+
+func (hc *heightsController) generateResponse(latest1, latest2 block, difference *big.Int) gin.H {
+	return gin.H{
 		"difference": difference.String(),
 		"threshold":  fmt.Sprint(hc.threshold),
 		"endpoints": []interface{}{map[string]interface{}{
@@ -123,8 +127,11 @@ func (hc *heightsController) Index(c *gin.Context) {
 			"number": latest2.Number,
 		}},
 	}
-	logJSON(resp)
-	c.JSON(statusCodeForDifference(hc.threshold, difference), resp)
+}
+
+func calculateDifference(latest1, latest2 block) *big.Int {
+	difference := big.NewInt(0)
+	return difference.Abs(difference.Sub(latest1.Number.ToInt(), latest2.Number.ToInt()))
 }
 
 func statusCodeForDifference(threshold uint, difference *big.Int) int {
