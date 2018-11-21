@@ -19,4 +19,5 @@ vendor/
 *.log
 tmp/
 Dockerfile
+Makefile
 ethblockcomparer
