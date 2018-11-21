@@ -16,3 +16,10 @@ ethblockcomparer help
 dep ensure
 go test ./...
 ```
+
+## Delivery
+
+```bash
+make build
+make push
+```

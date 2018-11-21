@@ -1,4 +1,9 @@
-.PHONY: all
+.PHONY: build push
 
-all:
-	docker build -t smartcontract/ethblockcomparer:1.0.1 .
+TAG=smartcontract/ethblockcomparer:1.0.1
+
+build:
+	docker build -t ${TAG} .
+
+push:
+	docker push ${TAG}
